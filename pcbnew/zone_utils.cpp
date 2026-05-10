@@ -279,9 +279,14 @@ void collectGridStitchingPoints( const ZONE& aZone, std::vector<VECTOR2I>& aPoin
     int top = bbox.GetTop() + clearance;
     int bottom = bbox.GetBottom() - clearance;
 
-    for( int y = top; y <= bottom && (int) aPoints.size() < MAX_STITCHING_VIAS; y += pitch )
+    int halfPitch = pitch / 2;
+    int row = 0;
+
+    for( int y = top; y <= bottom && (int) aPoints.size() < MAX_STITCHING_VIAS; y += pitch, ++row )
     {
-        for( int x = left; x <= right && (int) aPoints.size() < MAX_STITCHING_VIAS; x += pitch )
+        int rowLeft = left + ( row % 2 ? halfPitch : 0 );
+
+        for( int x = rowLeft; x <= right && (int) aPoints.size() < MAX_STITCHING_VIAS; x += pitch )
             addCandidatePoint( VECTOR2I( x, y ), 0, aPoints );
     }
 }
@@ -443,12 +448,10 @@ bool isZoneStitchingCandidate( const PCB_VIA& aVia, const ZONE& aZone )
 class STITCHING_VALIDATOR
 {
 public:
-    STITCHING_VALIDATOR( BOARD* aBoard, const ZONE& aSourceZone, int aViaDiameter,
-                         bool aIgnoreSameNetFreeVias ) :
+    STITCHING_VALIDATOR( BOARD* aBoard, const ZONE& aSourceZone, int aViaDiameter ) :
             m_board( aBoard ),
             m_sourceZone( aSourceZone ),
-            m_viaRadius( aViaDiameter / 2 ),
-            m_ignoreSameNetFreeVias( aIgnoreSameNetFreeVias )
+            m_viaRadius( aViaDiameter / 2 )
     {
     }
 
@@ -557,12 +560,6 @@ private:
                 if( isStitchingViaForZone( *existingVia, m_sourceZone ) )
                     continue;
 
-                if( m_ignoreSameNetFreeVias && existingVia->GetIsFree()
-                    && existingVia->GetViaType() == VIATYPE::THROUGH
-                    && existingVia->GetNetCode() == m_sourceZone.GetNetCode() )
-                {
-                    continue;
-                }
             }
 
             LSET trackCopperLayers = track->GetLayerSet() & LSET::AllCuMask();
@@ -645,7 +642,6 @@ private:
     BOARD*                                             m_board;
     const ZONE&                                        m_sourceZone;
     int                                                m_viaRadius;
-    bool                                               m_ignoreSameNetFreeVias;
     std::map<std::pair<const ZONE*, PCB_LAYER_ID>, SHAPE_POLY_SET>
             m_viaCenterAllowedAreas;
 };
@@ -666,7 +662,7 @@ bool hasMatchingViaAtPoint( BOARD* aBoard, const ZONE& aZone, const VECTOR2I& aP
 
 
 void addZoneViaStitching( BOARD_COMMIT& aCommit, BOARD* aBoard, const ZONE& aZone,
-                          bool aSkipExisting, bool aIgnoreSameNetFreeVias )
+                          bool aSkipExisting )
 {
     if( !aBoard || aZone.GetIsRuleArea() || aZone.IsTeardropArea() || !aZone.IsOnCopperLayer()
         || aZone.GetNetCode() <= 0 || aZone.GetViaStitchingMode() == ZONE_VIA_STITCHING_MODE::NONE )
@@ -677,8 +673,7 @@ void addZoneViaStitching( BOARD_COMMIT& aCommit, BOARD* aBoard, const ZONE& aZon
     std::vector<VECTOR2I> points;
     collectViaStitchingPoints( aBoard, aZone, points );
     std::vector<PCB_VIA*> vias;
-    STITCHING_VALIDATOR   validator( aBoard, aZone, aZone.GetViaStitchingDiameter(),
-                                     aIgnoreSameNetFreeVias );
+    STITCHING_VALIDATOR   validator( aBoard, aZone, aZone.GetViaStitchingDiameter() );
 
     for( const VECTOR2I& point : points )
     {
@@ -943,7 +938,7 @@ std::vector<std::unique_ptr<ZONE>> MergeZonesWithSameOutline( std::vector<std::u
 
 void AddZoneViaStitching( BOARD_COMMIT& aCommit, BOARD* aBoard, const ZONE& aZone )
 {
-    addZoneViaStitching( aCommit, aBoard, aZone, true, false );
+    addZoneViaStitching( aCommit, aBoard, aZone, true );
 }
 
 
@@ -1007,8 +1002,7 @@ void RebuildZoneViaStitching( BOARD_COMMIT& aCommit, BOARD* aBoard, const ZONE& 
 {
     RemoveZoneViaStitching( aCommit, aBoard, aOldZone );
     addZoneViaStitching( aCommit, aBoard, aNewZone,
-                         aOldZone.GetViaStitchingMode() == ZONE_VIA_STITCHING_MODE::NONE,
-                         aOldZone.GetViaStitchingMode() != ZONE_VIA_STITCHING_MODE::NONE );
+                         aOldZone.GetViaStitchingMode() == ZONE_VIA_STITCHING_MODE::NONE );
 }
 
 
