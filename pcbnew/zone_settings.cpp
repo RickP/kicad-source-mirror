@@ -57,6 +57,12 @@ ZONE_SETTINGS::ZONE_SETTINGS()
     m_HatchSmoothingValue = 0.1;    // Grid pattern chamfer value relative to the gap value
     m_HatchHoleMinArea = 0.15;      // Min size before holes are dropped (ratio of hole size)
     m_HatchBorderAlgorithm = 1;     // 0 = use zone min thickness; 1 = use hatch width
+    m_ViaStitchingMode = ZONE_VIA_STITCHING_MODE::NONE;
+    m_ViaStitchingEdgeMode = ZONE_VIA_STITCHING_EDGE_MODE::ALL;
+    m_ViaStitchingPitch = pcbIUScale.mmToIU( 2.5 );
+    m_ViaStitchingOffset = pcbIUScale.mmToIU( 0.5 );
+    m_ViaStitchingDiameter = pcbIUScale.mmToIU( 0.6 );
+    m_ViaStitchingDrill = pcbIUScale.mmToIU( 0.3 );
     m_Netcode = 0;                  // Net code for the current zone
     m_ZoneBorderDisplayStyle = ZONE_BORDER_DISPLAY_STYLE::DIAGONAL_EDGE; // Option to show the zone
                                                                          // outlines only, short
@@ -107,6 +113,12 @@ bool ZONE_SETTINGS::operator==( const ZONE_SETTINGS& aOther ) const
     if( m_HatchSmoothingValue         != aOther.m_HatchSmoothingValue ) return false;
     if( m_HatchBorderAlgorithm        != aOther.m_HatchBorderAlgorithm ) return false;
     if( m_HatchHoleMinArea            != aOther.m_HatchHoleMinArea ) return false;
+    if( m_ViaStitchingMode            != aOther.m_ViaStitchingMode ) return false;
+    if( m_ViaStitchingEdgeMode        != aOther.m_ViaStitchingEdgeMode ) return false;
+    if( m_ViaStitchingPitch           != aOther.m_ViaStitchingPitch ) return false;
+    if( m_ViaStitchingOffset          != aOther.m_ViaStitchingOffset ) return false;
+    if( m_ViaStitchingDiameter        != aOther.m_ViaStitchingDiameter ) return false;
+    if( m_ViaStitchingDrill           != aOther.m_ViaStitchingDrill ) return false;
     if( m_Netcode                     != aOther.m_Netcode ) return false;
     if( m_Name                        != aOther.m_Name ) return false;
     if( m_ZoneBorderDisplayStyle      != aOther.m_ZoneBorderDisplayStyle ) return false;
@@ -157,6 +169,12 @@ ZONE_SETTINGS& ZONE_SETTINGS::operator << ( const ZONE& aSource )
     m_HatchSmoothingValue         = aSource.GetHatchSmoothingValue();
     m_HatchBorderAlgorithm        = aSource.GetHatchBorderAlgorithm();
     m_HatchHoleMinArea            = aSource.GetHatchHoleMinArea();
+    m_ViaStitchingMode            = aSource.GetViaStitchingMode();
+    m_ViaStitchingEdgeMode        = aSource.GetViaStitchingEdgeMode();
+    m_ViaStitchingPitch           = aSource.GetViaStitchingPitch();
+    m_ViaStitchingOffset          = aSource.GetViaStitchingOffset();
+    m_ViaStitchingDiameter        = aSource.GetViaStitchingDiameter();
+    m_ViaStitchingDrill           = aSource.GetViaStitchingDrill();
     m_Netcode                     = aSource.GetNetCode();
     m_Name                        = aSource.GetZoneName();
     m_ZoneBorderDisplayStyle      = aSource.GetHatchStyle();
@@ -203,6 +221,12 @@ void ZONE_SETTINGS::ExportSetting( ZONE& aTarget, bool aFullExport ) const
     aTarget.SetHatchSmoothingValue( m_HatchSmoothingValue );
     aTarget.SetHatchBorderAlgorithm( m_HatchBorderAlgorithm );
     aTarget.SetHatchHoleMinArea( m_HatchHoleMinArea );
+    aTarget.SetViaStitchingMode( m_ViaStitchingMode );
+    aTarget.SetViaStitchingEdgeMode( m_ViaStitchingEdgeMode );
+    aTarget.SetViaStitchingPitch( m_ViaStitchingPitch );
+    aTarget.SetViaStitchingOffset( m_ViaStitchingOffset );
+    aTarget.SetViaStitchingDiameter( m_ViaStitchingDiameter );
+    aTarget.SetViaStitchingDrill( m_ViaStitchingDrill );
     aTarget.SetThermalReliefGap( m_ThermalReliefGap );
     aTarget.SetThermalReliefSpokeWidth( m_ThermalReliefSpokeWidth );
     aTarget.SetPadConnection( m_padConnection );
@@ -259,6 +283,12 @@ void ZONE_SETTINGS::CopyFrom( const ZONE_SETTINGS& aOther, bool aCopyFull )
     m_HatchSmoothingValue         = aOther.m_HatchSmoothingValue;
     m_HatchBorderAlgorithm        = aOther.m_HatchBorderAlgorithm;
     m_HatchHoleMinArea            = aOther.m_HatchHoleMinArea;
+    m_ViaStitchingMode            = aOther.m_ViaStitchingMode;
+    m_ViaStitchingEdgeMode        = aOther.m_ViaStitchingEdgeMode;
+    m_ViaStitchingPitch           = aOther.m_ViaStitchingPitch;
+    m_ViaStitchingOffset          = aOther.m_ViaStitchingOffset;
+    m_ViaStitchingDiameter        = aOther.m_ViaStitchingDiameter;
+    m_ViaStitchingDrill           = aOther.m_ViaStitchingDrill;
     m_Netcode                     = aOther.m_Netcode;
     m_Name                        = aOther.m_Name;
     m_ZoneBorderDisplayStyle      = aOther.m_ZoneBorderDisplayStyle;
@@ -516,5 +546,3 @@ void LAYER_PROPERTIES_GRID_TABLE::onUnitsChanged( wxCommandEvent& aEvent )
 
     aEvent.Skip();
 }
-
-

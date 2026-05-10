@@ -68,6 +68,7 @@ private:
 
     void OnZoneNameChanged( wxCommandEvent& event ) override;
     void onHatched( wxCommandEvent& event ) override;
+    void onViaStitchingMode( wxCommandEvent& event ) override;
     void onNetSelector( wxCommandEvent& aEvent );
     void OnRemoveIslandsSelection( wxCommandEvent& event ) override;
     void OnCornerSmoothingSelection( wxCommandEvent& event ) override;
@@ -95,6 +96,10 @@ private:
     UNIT_BINDER    m_gridStyleRotation;
     UNIT_BINDER    m_gridStyleThickness;
     UNIT_BINDER    m_gridStyleGap;
+    UNIT_BINDER    m_viaStitchingPitch;
+    UNIT_BINDER    m_viaStitchingOffset;
+    UNIT_BINDER    m_viaStitchingDiameter;
+    UNIT_BINDER    m_viaStitchingDrill;
     UNIT_BINDER    m_islandThreshold;
     bool           m_isTeardrop;
 };

@@ -61,6 +61,14 @@ PANEL_ZONE_PROPERTIES::PANEL_ZONE_PROPERTIES( wxWindow* aParent, PCB_BASE_FRAME*
         m_gridStyleRotation( aFrame, m_staticTextGrindOrient, m_tcGridStyleOrientation, m_staticTextRotUnits ),
         m_gridStyleThickness( aFrame, m_staticTextStyleThickness, m_tcGridStyleThickness, m_GridStyleThicknessUnits ),
         m_gridStyleGap( aFrame, m_staticTextGridGap, m_tcGridStyleGap, m_GridStyleGapUnits ),
+        m_viaStitchingPitch( aFrame, m_viaStitchingPitchLabel, m_viaStitchingPitchCtrl,
+                             m_viaStitchingPitchUnits ),
+        m_viaStitchingOffset( aFrame, m_viaStitchingOffsetLabel, m_viaStitchingOffsetCtrl,
+                              m_viaStitchingOffsetUnits ),
+        m_viaStitchingDiameter( aFrame, m_viaStitchingDiameterLabel, m_viaStitchingDiameterCtrl,
+                                m_viaStitchingDiameterUnits ),
+        m_viaStitchingDrill( aFrame, m_viaStitchingDrillLabel, m_viaStitchingDrillCtrl,
+                             m_viaStitchingDrillUnits ),
         m_islandThreshold( aFrame, m_islandThresholdLabel, m_tcIslandThreshold, m_islandThresholdUnits )
 {
     m_netSelector->SetNetInfo( &m_frame->GetBoard()->GetNetInfo() );
@@ -193,6 +201,24 @@ bool PANEL_ZONE_PROPERTIES::TransferZoneSettingsToWindow()
     m_gridStyleRotation.SetAngleValue( m_settings->m_HatchOrientation );
     m_gridStyleThickness.SetValue( m_settings->m_HatchThickness );
     m_gridStyleGap.SetValue( m_settings->m_HatchGap );
+    m_viaStitchingModeChoice->SetSelection( static_cast<int>( m_settings->m_ViaStitchingMode ) );
+    m_viaStitchingEdgesChoice->SetSelection( static_cast<int>( m_settings->m_ViaStitchingEdgeMode ) );
+    m_viaStitchingPitch.SetValue( m_settings->m_ViaStitchingPitch );
+    m_viaStitchingOffset.SetValue( m_settings->m_ViaStitchingOffset );
+    m_viaStitchingDiameter.SetValue( m_settings->m_ViaStitchingDiameter );
+    m_viaStitchingDrill.SetValue( m_settings->m_ViaStitchingDrill );
+
+    if( m_isTeardrop )
+    {
+        m_viaStitchingModeChoice->SetSelection( 0 );
+        m_viaStitchingModeChoice->Enable( false );
+        m_viaStitchingEdgesChoice->SetSelection( 0 );
+        m_viaStitchingEdgesChoice->Enable( false );
+    }
+    else
+    {
+        m_viaStitchingModeChoice->Enable( true );
+    }
 
     m_spinCtrlSmoothLevel->SetValue( m_settings->m_HatchSmoothingLevel );
     m_spinCtrlSmoothValue->SetValue( m_settings->m_HatchSmoothingValue );
@@ -216,6 +242,7 @@ bool PANEL_ZONE_PROPERTIES::TransferZoneSettingsToWindow()
     OnCornerSmoothingSelection( aEvent );
     OnRemoveIslandsSelection( aEvent );
     onHatched( aEvent );
+    onViaStitchingMode( aEvent );
 
     return true;
 }
@@ -353,6 +380,30 @@ bool PANEL_ZONE_PROPERTIES::AcceptOptions( bool aUseExportableSetupOnly )
             return false;
     }
 
+    if( m_viaStitchingModeChoice->GetSelection() != static_cast<int>( ZONE_VIA_STITCHING_MODE::NONE ) )
+    {
+        if( m_netSelector->IsShown() && m_netSelector->GetSelectedNetcode() <= INVALID_NET_CODE )
+        {
+            DisplayErrorMessage( this, _( "Via stitching requires a zone net." ) );
+            return false;
+        }
+
+        if( !m_viaStitchingDiameter.Validate( pcbIUScale.mmToIU( 0.1 ), INT_MAX ) )
+            return false;
+
+        if( !m_viaStitchingDrill.Validate( pcbIUScale.mmToIU( 0.1 ),
+                                           m_viaStitchingDiameter.GetIntValue() - 1 ) )
+        {
+            return false;
+        }
+
+        if( !m_viaStitchingPitch.Validate( m_viaStitchingDiameter.GetIntValue(), INT_MAX ) )
+            return false;
+
+        if( !m_viaStitchingOffset.Validate( 0, INT_MAX ) )
+            return false;
+    }
+
     switch( m_PadInZoneOpt->GetSelection() )
     {
     case 3: m_settings->SetPadConnection( ZONE_CONNECTION::NONE ); break;
@@ -415,6 +466,14 @@ bool PANEL_ZONE_PROPERTIES::AcceptOptions( bool aUseExportableSetupOnly )
     m_settings->m_HatchGap = m_gridStyleGap.GetIntValue();
     m_settings->m_HatchSmoothingLevel = m_spinCtrlSmoothLevel->GetValue();
     m_settings->m_HatchSmoothingValue = m_spinCtrlSmoothValue->GetValue();
+    m_settings->m_ViaStitchingMode =
+            static_cast<ZONE_VIA_STITCHING_MODE>( m_viaStitchingModeChoice->GetSelection() );
+    m_settings->m_ViaStitchingEdgeMode =
+            static_cast<ZONE_VIA_STITCHING_EDGE_MODE>( m_viaStitchingEdgesChoice->GetSelection() );
+    m_settings->m_ViaStitchingPitch = m_viaStitchingPitch.GetIntValue();
+    m_settings->m_ViaStitchingOffset = m_viaStitchingOffset.GetIntValue();
+    m_settings->m_ViaStitchingDiameter = m_viaStitchingDiameter.GetIntValue();
+    m_settings->m_ViaStitchingDrill = m_viaStitchingDrill.GetIntValue();
 
     for( auto& [layer, props] : m_settings->m_LayerProperties )
         props.hatching_offset = std::nullopt;
@@ -440,6 +499,22 @@ void PANEL_ZONE_PROPERTIES::onHatched( wxCommandEvent& event )
     m_layerSpecificOverrides->Enable( enable );
     m_bpAddCustomLayer->Enable( enable );
     m_bpDeleteCustomLayer->Enable( enable );
+}
+
+
+void PANEL_ZONE_PROPERTIES::onViaStitchingMode( wxCommandEvent& event )
+{
+    bool enable = m_viaStitchingModeChoice->GetSelection()
+                  != static_cast<int>( ZONE_VIA_STITCHING_MODE::NONE );
+    bool fence = m_viaStitchingModeChoice->GetSelection()
+                 == static_cast<int>( ZONE_VIA_STITCHING_MODE::FENCE );
+
+    m_viaStitchingEdgesLabel->Enable( fence );
+    m_viaStitchingEdgesChoice->Enable( fence );
+    m_viaStitchingPitch.Enable( enable );
+    m_viaStitchingOffset.Enable( enable );
+    m_viaStitchingDiameter.Enable( enable );
+    m_viaStitchingDrill.Enable( enable );
 }
 
 

@@ -38,6 +38,10 @@
 #include <dialogs/dialog_migrate_3d_models.h>
 #include <board_design_settings.h>
 #include <pcb_edit_frame.h>
+#include <zone_utils.h>
+
+#include <memory>
+#include <vector>
 
 
 GLOBAL_EDIT_TOOL::GLOBAL_EDIT_TOOL() :
@@ -242,9 +246,13 @@ int GLOBAL_EDIT_TOOL::ZonesManager( const TOOL_EVENT& aEvent )
     PCB_EDIT_FRAME* editFrame = getEditFrame<PCB_EDIT_FRAME>();
     BOARD_COMMIT    commit( editFrame );
     BOARD*          board = editFrame->GetBoard();
+    std::vector<std::pair<ZONE*, std::unique_ptr<ZONE>>> oldZones;
 
     for( ZONE* zone : board->Zones() )
+    {
         commit.Modify( zone );
+        oldZones.emplace_back( zone, std::unique_ptr<ZONE>( static_cast<ZONE*>( zone->Clone() ) ) );
+    }
 
     DIALOG_ZONE_MANAGER dlg( editFrame );
 
@@ -262,6 +270,9 @@ int GLOBAL_EDIT_TOOL::ZonesManager( const TOOL_EVENT& aEvent )
     selTool->ClearSelection();
 
     wxBusyCursor dummy;
+
+    for( const auto& [zone, oldZone] : oldZones )
+        RebuildZoneViaStitching( commit, board, *oldZone, *zone );
 
     // Clear the zone bounding box cache before Push() updates the VIEW, otherwise
     // View->Update() will query stale cached values and the VIEW's R-Tree will be
@@ -320,5 +331,3 @@ void GLOBAL_EDIT_TOOL::setTransitions()
     Go( &GLOBAL_EDIT_TOOL::RemoveUnusedPads,     PCB_ACTIONS::removeUnusedPads.MakeEvent() );
     Go( &GLOBAL_EDIT_TOOL::ZonesManager,         PCB_ACTIONS::zonesManager.MakeEvent() );
 }
-
-

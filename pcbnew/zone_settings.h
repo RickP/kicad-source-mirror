@@ -47,6 +47,20 @@ enum class ZONE_FILL_MODE
     HATCH_PATTERN = 1 // fill zone using a grid pattern
 };
 
+enum class ZONE_VIA_STITCHING_MODE
+{
+    NONE = 0,
+    GRID,
+    FENCE
+};
+
+enum class ZONE_VIA_STITCHING_EDGE_MODE
+{
+    ALL = 0,
+    OUTSIDE,
+    INSIDE
+};
+
 struct ZONE_LAYER_PROPERTIES
 {
     std::optional<VECTOR2I> hatching_offset;
@@ -111,6 +125,13 @@ public:
     double          m_HatchSmoothingValue;   // HatchBorder chamfer/fillet size as a ratio of hole size
     double          m_HatchHoleMinArea;      // min size before holes are dropped (ratio)
     int             m_HatchBorderAlgorithm;  // 0 = use min zone thickness
+
+    ZONE_VIA_STITCHING_MODE m_ViaStitchingMode;
+    ZONE_VIA_STITCHING_EDGE_MODE m_ViaStitchingEdgeMode;
+    int             m_ViaStitchingPitch;
+    int             m_ViaStitchingOffset;
+    int             m_ViaStitchingDiameter;
+    int             m_ViaStitchingDrill;
 
     int             m_Netcode;               // Net code selection for the current zone
 

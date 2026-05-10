@@ -34,6 +34,7 @@
 #include <tool/tool_manager.h>
 #include <tool/actions.h>
 #include <zone.h>
+#include <zone_utils.h>
 #include <zones.h>
 #include <connectivity/connectivity_data.h>
 
@@ -66,6 +67,7 @@ void PCB_EDIT_FRAME::Edit_Zone_Params( ZONE* aZone )
         return;
 
     wxBusyCursor dummy;
+    ZONE         oldZone( *aZone );
 
     // Undraw old zone outlines
     for( ZONE* zone : GetBoard()->Zones() )
@@ -77,6 +79,8 @@ void PCB_EDIT_FRAME::Edit_Zone_Params( ZONE* aZone )
 
     if( NETINFO_ITEM* net = GetBoard()->FindNet( zoneInfo.m_Netcode ) )
         aZone->SetNetCode( net->GetNetCode() );
+
+    RebuildZoneViaStitching( commit, GetBoard(), oldZone, *aZone );
 
     // restore default net properties
     zoneInfo.m_Netcode = NETINFO_LIST::ORPHANED;
@@ -137,6 +141,5 @@ bool BOARD::TestZoneIntersection( ZONE* aZone1, ZONE* aZone2 )
 
     return false;
 }
-
 
 

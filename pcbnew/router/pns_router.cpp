@@ -207,6 +207,7 @@ bool ROUTER::StartDragging( const VECTOR2I& aP, ITEM_SET aStartItems, int aDragM
 
     if( m_dragger->Start( aP, aStartItems ) )
     {
+        m_iface->SetRoutingSessionActive( true );
         return true;
     }
     else
@@ -471,6 +472,7 @@ bool ROUTER::StartRouting( const VECTOR2I& aP, ITEM* aStartItem, int aLayer )
     if( m_placer->Start( aP, aStartItem ) )
     {
         m_state = ROUTE_TRACK;
+        m_iface->SetRoutingSessionActive( true );
 
         if( m_logger )
         {
@@ -977,10 +979,11 @@ void ROUTER::StopRouting()
     if( !RoutingInProgress() )
         return;
 
+    m_iface->SetRoutingSessionActive( false );
+    m_iface->EraseView();
+
     m_placer.reset();
     m_dragger.reset();
-
-    m_iface->EraseView();
 
     m_state = IDLE;
     m_world->KillChildren();

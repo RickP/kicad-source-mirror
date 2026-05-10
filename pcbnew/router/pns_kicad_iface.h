@@ -44,6 +44,7 @@ class EDA_TEXT;
 class LENGTH_DELAY_CALCULATION_ITEM;
 class BOARD_ITEM;
 class EDA_GROUP;
+class ZONE;
 
 namespace PNS
 {
@@ -149,9 +150,11 @@ public:
     virtual void SetHostTool( PCB_TOOL_BASE* aTool );
 
     void SetView( KIGFX::VIEW* aView );
+    void SyncWorld( PNS::NODE* aWorld ) override;
     void EraseView() override;
     bool IsAnyLayerVisible( const PNS_LAYER_RANGE& aLayer ) const override;
     bool IsItemVisible( const PNS::ITEM* aItem ) const override;
+    void SetRoutingSessionActive( bool aActive ) override;
     void HideItem( PNS::ITEM* aItem ) override;
     void DisplayItem( const PNS::ITEM* aItem, int aClearance, bool aEdit = false,
                       int aFlags = 0 ) override;
@@ -173,6 +176,9 @@ public:
 protected:
     BOARD_CONNECTED_ITEM* createBoardItem( PNS::ITEM* aItem );
     void                  modifyBoardItem( PNS::ITEM* aItem );
+    void                  hideGeneratedZoneVias();
+    void                  markStitchingZonesForItem( const BOARD_ITEM* aItem );
+    void                  refillTouchedStitchingZones();
 
     struct OFFSET
     {
@@ -186,10 +192,12 @@ protected:
 
     std::unordered_map<BOARD_ITEM*, EDA_GROUP*>               m_itemGroups;
     std::unordered_map<BOARD_ITEM*, std::vector<BOARD_ITEM*>> m_replacementMap;
+    std::unordered_set<ZONE*>                                 m_touchedStitchingZones;
 
     PCB_TOOL_BASE*                  m_tool;
     std::unique_ptr<BOARD_COMMIT>   m_commit;
     int                             m_commitFlags;
+    bool                            m_routingSessionActive;
 };
 
 

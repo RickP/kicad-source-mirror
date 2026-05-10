@@ -44,8 +44,11 @@
 #include <kidialog.h>
 #include <tools/pcb_tool_base.h>
 #include <tools/pcb_selection_tool.h>
+#include <tools/zone_filler_tool.h>
+#include <tools/pcb_actions.h>
 #include <tool/tool_manager.h>
 #include <settings/app_settings.h>
+#include <zone_utils.h>
 
 #include <gal/graphics_abstraction_layer.h>
 #include <pcb_painter.h>
@@ -1438,6 +1441,7 @@ PNS_KICAD_IFACE::PNS_KICAD_IFACE()
     m_view = nullptr;
     m_previewItems = nullptr;
     m_commitFlags = 0;
+    m_routingSessionActive = false;
 }
 
 
@@ -1633,6 +1637,9 @@ std::unique_ptr<PNS::ARC> PNS_KICAD_IFACE_BASE::syncArc( PCB_ARC* aArc )
 
 std::unique_ptr<PNS::VIA> PNS_KICAD_IFACE_BASE::syncVia( PCB_VIA* aVia )
 {
+    if( IsZoneViaStitchingVia( *aVia ) )
+        return nullptr;
+
     PCB_LAYER_ID top, bottom;
     aVia->LayerPair( &top, &bottom );
 
@@ -2297,11 +2304,17 @@ void PNS_KICAD_IFACE_BASE::SyncWorld( PNS::NODE *aWorld )
 void PNS_KICAD_IFACE::EraseView()
 {
     for( BOARD_ITEM* item : m_hiddenItems )
-        m_view->SetVisible( item, true );
+    {
+        if( m_view )
+        {
+            m_view->SetVisible( item, true );
+            m_view->Update( item, KIGFX::APPEARANCE );
+        }
+    }
 
     m_hiddenItems.clear();
 
-    if( m_previewItems )
+    if( m_previewItems && m_view )
     {
         m_previewItems->FreeItems();
         m_view->Update( m_previewItems );
@@ -2309,6 +2322,45 @@ void PNS_KICAD_IFACE::EraseView()
 
     if( m_debugDecorator )
         m_debugDecorator->Clear();
+
+    if( m_routingSessionActive )
+        hideGeneratedZoneVias();
+}
+
+
+void PNS_KICAD_IFACE::SyncWorld( PNS::NODE* aWorld )
+{
+    PNS_KICAD_IFACE_BASE::SyncWorld( aWorld );
+}
+
+
+void PNS_KICAD_IFACE::SetRoutingSessionActive( bool aActive )
+{
+    m_routingSessionActive = aActive;
+
+    if( m_routingSessionActive )
+        hideGeneratedZoneVias();
+}
+
+
+void PNS_KICAD_IFACE::hideGeneratedZoneVias()
+{
+    if( !m_board || !m_view )
+        return;
+
+    for( PCB_TRACK* track : m_board->Tracks() )
+    {
+        PCB_VIA* via = dyn_cast<PCB_VIA*>( track );
+
+        if( !via || !IsZoneViaStitchingVia( *via ) )
+            continue;
+
+        if( m_view->IsVisible( via ) )
+            m_hiddenItems.insert( via );
+
+        m_view->SetVisible( via, false );
+        m_view->Update( via, KIGFX::APPEARANCE );
+    }
 }
 
 
@@ -2478,6 +2530,8 @@ void PNS_KICAD_IFACE::RemoveItem( PNS::ITEM* aItem )
 
     if( parent )
     {
+        markStitchingZonesForItem( parent );
+
         if( EDA_GROUP* group = parent->GetParentGroup() )
             m_itemGroups[parent] = group;
 
@@ -2592,7 +2646,9 @@ void PNS_KICAD_IFACE::modifyBoardItem( PNS::ITEM* aItem )
 
 void PNS_KICAD_IFACE::UpdateItem( PNS::ITEM* aItem )
 {
+    markStitchingZonesForItem( aItem->Parent() );
     modifyBoardItem( aItem );
+    markStitchingZonesForItem( aItem->Parent() );
 }
 
 
@@ -2750,8 +2806,58 @@ void PNS_KICAD_IFACE::AddItem( PNS::ITEM* aItem )
         aItem->SetParent( boardItem );
         boardItem->ClearFlags();
 
+        markStitchingZonesForItem( boardItem );
         m_commit->Add( boardItem );
     }
+}
+
+
+void PNS_KICAD_IFACE::markStitchingZonesForItem( const BOARD_ITEM* aItem )
+{
+    if( !m_board || !aItem )
+        return;
+
+    if( !( aItem->GetLayerSet() & LSET::AllCuMask() ).any() )
+        return;
+
+    BOX2I itemBBox = aItem->GetBoundingBox();
+
+    for( ZONE* zone : m_board->Zones() )
+    {
+        if( zone->GetIsRuleArea() || zone->IsTeardropArea() || !zone->IsOnCopperLayer()
+            || zone->GetNetCode() <= 0
+            || zone->GetViaStitchingMode() == ZONE_VIA_STITCHING_MODE::NONE )
+        {
+            continue;
+        }
+
+        if( zone->GetBoundingBox().Intersects( itemBBox ) )
+            m_touchedStitchingZones.insert( zone );
+    }
+}
+
+
+void PNS_KICAD_IFACE::refillTouchedStitchingZones()
+{
+    if( m_touchedStitchingZones.empty() || !m_tool )
+        return;
+
+    ZONE_FILLER_TOOL* zoneFillerTool = m_tool->GetManager()->GetTool<ZONE_FILLER_TOOL>();
+
+    if( !zoneFillerTool )
+    {
+        m_touchedStitchingZones.clear();
+        return;
+    }
+
+    for( ZONE* zone : m_touchedStitchingZones )
+    {
+        if( zone && zone->GetViaStitchingMode() != ZONE_VIA_STITCHING_MODE::NONE )
+            zoneFillerTool->DirtyZone( zone );
+    }
+
+    m_touchedStitchingZones.clear();
+    m_tool->GetManager()->PostAction( PCB_ACTIONS::zoneFillDirty );
 }
 
 
@@ -2801,6 +2907,7 @@ void PNS_KICAD_IFACE::Commit()
     m_replacementMap.clear();
 
     m_commit->Push( _( "Routing" ), m_commitFlags | SKIP_ENTERED_GROUP );
+    refillTouchedStitchingZones();
     m_commit = std::make_unique<BOARD_COMMIT>( m_tool );
 }
 

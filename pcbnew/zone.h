@@ -329,6 +329,27 @@ public:
     int GetHatchBorderAlgorithm() const { return m_hatchBorderAlgorithm; }
     void SetHatchBorderAlgorithm( int aAlgo ) { m_hatchBorderAlgorithm = aAlgo; }
 
+    ZONE_VIA_STITCHING_MODE GetViaStitchingMode() const { return m_viaStitchingMode; }
+    void SetViaStitchingMode( ZONE_VIA_STITCHING_MODE aMode ) { m_viaStitchingMode = aMode; }
+
+    ZONE_VIA_STITCHING_EDGE_MODE GetViaStitchingEdgeMode() const { return m_viaStitchingEdgeMode; }
+    void SetViaStitchingEdgeMode( ZONE_VIA_STITCHING_EDGE_MODE aMode )
+    {
+        m_viaStitchingEdgeMode = aMode;
+    }
+
+    int GetViaStitchingPitch() const { return m_viaStitchingPitch; }
+    void SetViaStitchingPitch( int aPitch ) { m_viaStitchingPitch = aPitch; }
+
+    int GetViaStitchingOffset() const { return m_viaStitchingOffset; }
+    void SetViaStitchingOffset( int aOffset ) { m_viaStitchingOffset = aOffset; }
+
+    int GetViaStitchingDiameter() const { return m_viaStitchingDiameter; }
+    void SetViaStitchingDiameter( int aDiameter ) { m_viaStitchingDiameter = aDiameter; }
+
+    int GetViaStitchingDrill() const { return m_viaStitchingDrill; }
+    void SetViaStitchingDrill( int aDrill ) { m_viaStitchingDrill = aDrill; }
+
     ///
     int GetLocalFlags() const { return m_localFlgs; }
     void SetLocalFlags( int aFlags ) { m_localFlgs = aFlags; }
@@ -907,6 +928,14 @@ protected:
     double           m_hatchHoleMinArea;        // min size before holes are dropped (ratio)
     int              m_hatchBorderAlgorithm;    // 0 = use min zone thickness
                                                 // 1 = use hatch thickness
+
+    ZONE_VIA_STITCHING_MODE m_viaStitchingMode;
+    ZONE_VIA_STITCHING_EDGE_MODE m_viaStitchingEdgeMode;
+    int              m_viaStitchingPitch;
+    int              m_viaStitchingOffset;
+    int              m_viaStitchingDiameter;
+    int              m_viaStitchingDrill;
+
     int              m_localFlgs;               // Variable used in polygon calculations.
 
     /* set of filled polygons used to draw a zone as a filled area.
@@ -942,6 +971,7 @@ protected:
 
 DECLARE_ENUM_TO_WXANY( ZONE_CONNECTION )
 DECLARE_ENUM_TO_WXANY( ZONE_FILL_MODE )
+DECLARE_ENUM_TO_WXANY( ZONE_VIA_STITCHING_MODE )
 DECLARE_ENUM_TO_WXANY( ISLAND_REMOVAL_MODE )
 DECLARE_ENUM_TO_WXANY( PLACEMENT_SOURCE_T )
 

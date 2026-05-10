@@ -25,6 +25,7 @@
 #include <cstdint>
 #include <thread>
 #include <zone.h>
+#include <zone_utils.h>
 #include <connectivity/connectivity_data.h>
 #include <board_commit.h>
 #include <footprint.h>
@@ -93,6 +94,9 @@ void ZONE_FILLER_TOOL::CheckAllZones( wxWindow* aCaller, PROGRESS_REPORTER* aRep
 
     if( m_filler->Fill( toFill, true, aCaller ) )
     {
+        for( ZONE* zone : toFill )
+            RebuildZoneViaStitching( commit, board(), *zone, *zone );
+
         commit.Push( _( "Fill Zone(s)" ), SKIP_CONNECTIVITY | ZONE_FILL_OP );
         getEditFrame<PCB_EDIT_FRAME>()->m_ZoneFillsDirty = false;
     }
@@ -174,6 +178,9 @@ void ZONE_FILLER_TOOL::FillAllZones( wxWindow* aCaller, PROGRESS_REPORTER* aRepo
     {
         if( m_filler->GetProgressReporter() )
             m_filler->GetProgressReporter()->AdvancePhase();
+
+        for( ZONE* zone : toFill )
+            RebuildZoneViaStitching( commit, board(), *zone, *zone );
 
         commit.Push( _( "Fill Zone(s)" ), SKIP_CONNECTIVITY | ZONE_FILL_OP );
         if( !aHeadless )
@@ -272,9 +279,16 @@ int ZONE_FILLER_TOOL::ZoneFillDirty( const TOOL_EVENT& aEvent )
     }
 
     if( m_filler->Fill( toFill ) )
+    {
+        for( ZONE* zone : toFill )
+            RebuildZoneViaStitching( commit, board(), *zone, *zone );
+
         commit.Push( _( "Auto-fill Zone(s)" ), APPEND_UNDO | SKIP_CONNECTIVITY | ZONE_FILL_OP );
+    }
     else
+    {
         commit.Revert();
+    }
 
     rebuildConnectivity();
     refresh();
@@ -361,6 +375,10 @@ int ZONE_FILLER_TOOL::ZoneFill( const TOOL_EVENT& aEvent )
     if( m_filler->Fill( toFill ) )
     {
         reporter->AdvancePhase();
+
+        for( ZONE* zone : toFill )
+            RebuildZoneViaStitching( commit, board(), *zone, *zone );
+
         commit.Push( _( "Fill Zone(s)" ), SKIP_CONNECTIVITY | ZONE_FILL_OP );
     }
     else
@@ -411,6 +429,7 @@ int ZONE_FILLER_TOOL::ZoneUnfill( const TOOL_EVENT& aEvent )
     for( ZONE* zone : toUnfill )
     {
         commit.Modify( zone );
+        RemoveZoneViaStitching( commit, board(), *zone );
 
         zone->UnFill();
     }
@@ -430,6 +449,7 @@ int ZONE_FILLER_TOOL::ZoneUnfillAll( const TOOL_EVENT& aEvent )
     for( ZONE* zone : board()->Zones() )
     {
         commit.Modify( zone );
+        RemoveZoneViaStitching( commit, board(), *zone );
 
         zone->UnFill();
     }

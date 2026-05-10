@@ -103,6 +103,7 @@ date
 defaults
 descr
 description
+diameter
 die_delay
 die_length
 dielectric_constraints
@@ -117,6 +118,7 @@ drill
 duplicate_pad_numbers_are_jumpers
 ecc_level
 edge
+edges
 edge_clearance
 edge_cuts_line_width
 edge_connector
@@ -284,6 +286,7 @@ pad_prop_mechanical
 pad_prop_pressfit
 padstack
 padvia
+pitch
 prefer_zone_connections
 private_layers
 property

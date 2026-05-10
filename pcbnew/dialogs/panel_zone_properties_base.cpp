@@ -319,6 +319,92 @@ PANEL_ZONE_PROPERTIES_BASE::PANEL_ZONE_PROPERTIES_BASE( wxWindow* parent, wxWind
 	m_hatchedFillPanel->Layout();
 	bHatchedFillSizer->Fit( m_hatchedFillPanel );
 	m_notebook->AddPage( m_hatchedFillPanel, _("Hatched Fill"), false );
+	m_viaStitchingPanel = new wxPanel( m_notebook, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
+	wxBoxSizer* bViaStitchingSizer;
+	bViaStitchingSizer = new wxBoxSizer( wxVERTICAL );
+
+	wxGridBagSizer* gbSizerViaStitching;
+	gbSizerViaStitching = new wxGridBagSizer( 1, 1 );
+	gbSizerViaStitching->SetFlexibleDirection( wxBOTH );
+	gbSizerViaStitching->SetNonFlexibleGrowMode( wxFLEX_GROWMODE_SPECIFIED );
+
+	m_viaStitchingModeLabel = new wxStaticText( m_viaStitchingPanel, wxID_ANY, _("Stitching:"), wxDefaultPosition, wxDefaultSize, 0 );
+	m_viaStitchingModeLabel->Wrap( -1 );
+	gbSizerViaStitching->Add( m_viaStitchingModeLabel, wxGBPosition( 0, 0 ), wxGBSpan( 1, 1 ), wxALIGN_CENTER_VERTICAL|wxALL, 5 );
+
+	wxString m_viaStitchingModeChoiceChoices[] = { _("Off"), _("Grid"), _("Fence") };
+	int m_viaStitchingModeChoiceNChoices = sizeof( m_viaStitchingModeChoiceChoices ) / sizeof( wxString );
+	m_viaStitchingModeChoice = new wxChoice( m_viaStitchingPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, m_viaStitchingModeChoiceNChoices, m_viaStitchingModeChoiceChoices, 0 );
+	m_viaStitchingModeChoice->SetSelection( 0 );
+	gbSizerViaStitching->Add( m_viaStitchingModeChoice, wxGBPosition( 0, 1 ), wxGBSpan( 1, 1 ), wxALIGN_CENTER_VERTICAL|wxEXPAND|wxALL, 5 );
+
+	m_viaStitchingEdgesLabel = new wxStaticText( m_viaStitchingPanel, wxID_ANY, _("Edges:"), wxDefaultPosition, wxDefaultSize, 0 );
+	m_viaStitchingEdgesLabel->Wrap( -1 );
+	m_viaStitchingEdgesLabel->SetToolTip( _("Select which filled zone boundaries receive fence vias.") );
+	gbSizerViaStitching->Add( m_viaStitchingEdgesLabel, wxGBPosition( 1, 0 ), wxGBSpan( 1, 1 ), wxALIGN_CENTER_VERTICAL|wxLEFT|wxRIGHT|wxBOTTOM, 5 );
+
+	wxString m_viaStitchingEdgesChoiceChoices[] = { _("All edges"), _("Outside only"), _("Inside only") };
+	int m_viaStitchingEdgesChoiceNChoices = sizeof( m_viaStitchingEdgesChoiceChoices ) / sizeof( wxString );
+	m_viaStitchingEdgesChoice = new wxChoice( m_viaStitchingPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, m_viaStitchingEdgesChoiceNChoices, m_viaStitchingEdgesChoiceChoices, 0 );
+	m_viaStitchingEdgesChoice->SetSelection( 0 );
+	gbSizerViaStitching->Add( m_viaStitchingEdgesChoice, wxGBPosition( 1, 1 ), wxGBSpan( 1, 1 ), wxEXPAND|wxRIGHT|wxLEFT|wxBOTTOM, 5 );
+
+	m_viaStitchingPitchLabel = new wxStaticText( m_viaStitchingPanel, wxID_ANY, _("Pitch:"), wxDefaultPosition, wxDefaultSize, 0 );
+	m_viaStitchingPitchLabel->Wrap( -1 );
+	m_viaStitchingPitchLabel->SetToolTip( _("Distance between generated stitching vias.") );
+	gbSizerViaStitching->Add( m_viaStitchingPitchLabel, wxGBPosition( 2, 0 ), wxGBSpan( 1, 1 ), wxALIGN_CENTER_VERTICAL|wxLEFT|wxRIGHT|wxBOTTOM, 5 );
+
+	m_viaStitchingPitchCtrl = new wxTextCtrl( m_viaStitchingPanel, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, 0 );
+	gbSizerViaStitching->Add( m_viaStitchingPitchCtrl, wxGBPosition( 2, 1 ), wxGBSpan( 1, 1 ), wxEXPAND|wxRIGHT|wxLEFT|wxBOTTOM, 5 );
+
+	m_viaStitchingPitchUnits = new wxStaticText( m_viaStitchingPanel, wxID_ANY, _("mm"), wxDefaultPosition, wxDefaultSize, 0 );
+	m_viaStitchingPitchUnits->Wrap( -1 );
+	gbSizerViaStitching->Add( m_viaStitchingPitchUnits, wxGBPosition( 2, 2 ), wxGBSpan( 1, 1 ), wxALIGN_CENTER_VERTICAL|wxRIGHT|wxBOTTOM, 5 );
+
+	m_viaStitchingOffsetLabel = new wxStaticText( m_viaStitchingPanel, wxID_ANY, _("Edge offset:"), wxDefaultPosition, wxDefaultSize, 0 );
+	m_viaStitchingOffsetLabel->Wrap( -1 );
+	m_viaStitchingOffsetLabel->SetToolTip( _("Minimum distance from a generated via to the zone outline.") );
+	gbSizerViaStitching->Add( m_viaStitchingOffsetLabel, wxGBPosition( 3, 0 ), wxGBSpan( 1, 1 ), wxALIGN_CENTER_VERTICAL|wxLEFT|wxRIGHT|wxBOTTOM, 5 );
+
+	m_viaStitchingOffsetCtrl = new wxTextCtrl( m_viaStitchingPanel, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, 0 );
+	gbSizerViaStitching->Add( m_viaStitchingOffsetCtrl, wxGBPosition( 3, 1 ), wxGBSpan( 1, 1 ), wxEXPAND|wxRIGHT|wxLEFT|wxBOTTOM, 5 );
+
+	m_viaStitchingOffsetUnits = new wxStaticText( m_viaStitchingPanel, wxID_ANY, _("mm"), wxDefaultPosition, wxDefaultSize, 0 );
+	m_viaStitchingOffsetUnits->Wrap( -1 );
+	gbSizerViaStitching->Add( m_viaStitchingOffsetUnits, wxGBPosition( 3, 2 ), wxGBSpan( 1, 1 ), wxALIGN_CENTER_VERTICAL|wxRIGHT|wxBOTTOM, 5 );
+
+	m_viaStitchingDiameterLabel = new wxStaticText( m_viaStitchingPanel, wxID_ANY, _("Via diameter:"), wxDefaultPosition, wxDefaultSize, 0 );
+	m_viaStitchingDiameterLabel->Wrap( -1 );
+	gbSizerViaStitching->Add( m_viaStitchingDiameterLabel, wxGBPosition( 4, 0 ), wxGBSpan( 1, 1 ), wxALIGN_CENTER_VERTICAL|wxLEFT|wxRIGHT|wxBOTTOM, 5 );
+
+	m_viaStitchingDiameterCtrl = new wxTextCtrl( m_viaStitchingPanel, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, 0 );
+	gbSizerViaStitching->Add( m_viaStitchingDiameterCtrl, wxGBPosition( 4, 1 ), wxGBSpan( 1, 1 ), wxEXPAND|wxRIGHT|wxLEFT|wxBOTTOM, 5 );
+
+	m_viaStitchingDiameterUnits = new wxStaticText( m_viaStitchingPanel, wxID_ANY, _("mm"), wxDefaultPosition, wxDefaultSize, 0 );
+	m_viaStitchingDiameterUnits->Wrap( -1 );
+	gbSizerViaStitching->Add( m_viaStitchingDiameterUnits, wxGBPosition( 4, 2 ), wxGBSpan( 1, 1 ), wxALIGN_CENTER_VERTICAL|wxRIGHT|wxBOTTOM, 5 );
+
+	m_viaStitchingDrillLabel = new wxStaticText( m_viaStitchingPanel, wxID_ANY, _("Via drill:"), wxDefaultPosition, wxDefaultSize, 0 );
+	m_viaStitchingDrillLabel->Wrap( -1 );
+	gbSizerViaStitching->Add( m_viaStitchingDrillLabel, wxGBPosition( 5, 0 ), wxGBSpan( 1, 1 ), wxALIGN_CENTER_VERTICAL|wxLEFT|wxRIGHT|wxBOTTOM, 5 );
+
+	m_viaStitchingDrillCtrl = new wxTextCtrl( m_viaStitchingPanel, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, 0 );
+	gbSizerViaStitching->Add( m_viaStitchingDrillCtrl, wxGBPosition( 5, 1 ), wxGBSpan( 1, 1 ), wxEXPAND|wxRIGHT|wxLEFT|wxBOTTOM, 5 );
+
+	m_viaStitchingDrillUnits = new wxStaticText( m_viaStitchingPanel, wxID_ANY, _("mm"), wxDefaultPosition, wxDefaultSize, 0 );
+	m_viaStitchingDrillUnits->Wrap( -1 );
+	gbSizerViaStitching->Add( m_viaStitchingDrillUnits, wxGBPosition( 5, 2 ), wxGBSpan( 1, 1 ), wxALIGN_CENTER_VERTICAL|wxRIGHT|wxBOTTOM, 5 );
+
+
+	gbSizerViaStitching->AddGrowableCol( 1 );
+
+	bViaStitchingSizer->Add( gbSizerViaStitching, 0, wxALL|wxEXPAND, 5 );
+
+
+	m_viaStitchingPanel->SetSizer( bViaStitchingSizer );
+	m_viaStitchingPanel->Layout();
+	bViaStitchingSizer->Fit( m_viaStitchingPanel );
+	m_notebook->AddPage( m_viaStitchingPanel, _("Via Stitching"), false );
 
 	bPropertiesSizer->Add( m_notebook, 1, wxEXPAND|wxALL, 5 );
 
@@ -392,6 +478,7 @@ PANEL_ZONE_PROPERTIES_BASE::PANEL_ZONE_PROPERTIES_BASE( wxWindow* parent, wxWind
 	// Connect Events
 	m_tcZoneName->Connect( wxEVT_COMMAND_TEXT_UPDATED, wxCommandEventHandler( PANEL_ZONE_PROPERTIES_BASE::OnZoneNameChanged ), NULL, this );
 	m_cbHatched->Connect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( PANEL_ZONE_PROPERTIES_BASE::onHatched ), NULL, this );
+	m_viaStitchingModeChoice->Connect( wxEVT_COMMAND_CHOICE_SELECTED, wxCommandEventHandler( PANEL_ZONE_PROPERTIES_BASE::onViaStitchingMode ), NULL, this );
 	m_bpAddCustomLayer->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( PANEL_ZONE_PROPERTIES_BASE::OnAddLayerItem ), NULL, this );
 	m_bpDeleteCustomLayer->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( PANEL_ZONE_PROPERTIES_BASE::OnDeleteLayerItem ), NULL, this );
 	m_cornerSmoothingChoice->Connect( wxEVT_COMMAND_CHOICE_SELECTED, wxCommandEventHandler( PANEL_ZONE_PROPERTIES_BASE::OnCornerSmoothingSelection ), NULL, this );
@@ -403,6 +490,7 @@ PANEL_ZONE_PROPERTIES_BASE::~PANEL_ZONE_PROPERTIES_BASE()
 	// Disconnect Events
 	m_tcZoneName->Disconnect( wxEVT_COMMAND_TEXT_UPDATED, wxCommandEventHandler( PANEL_ZONE_PROPERTIES_BASE::OnZoneNameChanged ), NULL, this );
 	m_cbHatched->Disconnect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( PANEL_ZONE_PROPERTIES_BASE::onHatched ), NULL, this );
+	m_viaStitchingModeChoice->Disconnect( wxEVT_COMMAND_CHOICE_SELECTED, wxCommandEventHandler( PANEL_ZONE_PROPERTIES_BASE::onViaStitchingMode ), NULL, this );
 	m_bpAddCustomLayer->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( PANEL_ZONE_PROPERTIES_BASE::OnAddLayerItem ), NULL, this );
 	m_bpDeleteCustomLayer->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( PANEL_ZONE_PROPERTIES_BASE::OnDeleteLayerItem ), NULL, this );
 	m_cornerSmoothingChoice->Disconnect( wxEVT_COMMAND_CHOICE_SELECTED, wxCommandEventHandler( PANEL_ZONE_PROPERTIES_BASE::OnCornerSmoothingSelection ), NULL, this );

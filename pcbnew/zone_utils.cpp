@@ -24,19 +24,779 @@
 #include "zone_utils.h"
 
 #include <board.h>
+#include <board_commit.h>
 #include <footprint.h>
 #include <pad.h>
+#include <pcb_group.h>
 #include <pcb_track.h>
 #include <thread_pool.h>
 #include <zone.h>
 #include <geometry/shape_poly_set.h>
 
 #include <algorithm>
+#include <climits>
 #include <cmath>
 #include <future>
+#include <map>
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
+
+
+namespace
+{
+
+constexpr int MAX_STITCHING_VIAS = 10000;
+
+const wxString& stitchingGroupPrefix()
+{
+    static const wxString prefix = wxS( "__zone_via_stitching_" );
+    return prefix;
+}
+
+
+wxString stitchingGroupPrefix( const ZONE& aZone )
+{
+    return stitchingGroupPrefix() + aZone.m_Uuid.AsString();
+}
+
+
+const wxChar* modeCode( ZONE_VIA_STITCHING_MODE aMode )
+{
+    switch( aMode )
+    {
+    case ZONE_VIA_STITCHING_MODE::GRID:  return wxS( "g" );
+    case ZONE_VIA_STITCHING_MODE::FENCE: return wxS( "f" );
+    case ZONE_VIA_STITCHING_MODE::NONE:  return wxS( "n" );
+    }
+
+    return wxS( "n" );
+}
+
+
+const wxChar* edgeModeCode( ZONE_VIA_STITCHING_EDGE_MODE aMode )
+{
+    switch( aMode )
+    {
+    case ZONE_VIA_STITCHING_EDGE_MODE::ALL:     return wxS( "a" );
+    case ZONE_VIA_STITCHING_EDGE_MODE::OUTSIDE: return wxS( "o" );
+    case ZONE_VIA_STITCHING_EDGE_MODE::INSIDE:  return wxS( "i" );
+    }
+
+    return wxS( "a" );
+}
+
+
+wxString stitchingGroupName( const ZONE& aZone )
+{
+    return wxString::Format( wxS( "%s;v=1;m=%s;e=%s;p=%d;o=%d;d=%d;r=%d" ),
+                             stitchingGroupPrefix( aZone ).c_str(),
+                             modeCode( aZone.GetViaStitchingMode() ),
+                             edgeModeCode( aZone.GetViaStitchingEdgeMode() ),
+                             aZone.GetViaStitchingPitch(),
+                             aZone.GetViaStitchingOffset(),
+                             aZone.GetViaStitchingDiameter(),
+                             aZone.GetViaStitchingDrill() );
+}
+
+
+bool isSameZoneStitchingGroup( const EDA_GROUP* aGroup, const ZONE& aZone )
+{
+    return aGroup && aGroup->GetName().StartsWith( stitchingGroupPrefix( aZone ) );
+}
+
+
+PCB_GROUP* findStitchingGroup( BOARD* aBoard, const ZONE& aZone )
+{
+    if( !aBoard )
+        return nullptr;
+
+    for( PCB_GROUP* group : aBoard->Groups() )
+    {
+        if( isSameZoneStitchingGroup( group, aZone ) )
+            return group;
+    }
+
+    return nullptr;
+}
+
+
+struct STITCHING_GROUP_SETTINGS
+{
+    wxString                       uuid;
+    bool                           hasSettings = false;
+    ZONE_VIA_STITCHING_MODE        mode = ZONE_VIA_STITCHING_MODE::NONE;
+    ZONE_VIA_STITCHING_EDGE_MODE   edgeMode = ZONE_VIA_STITCHING_EDGE_MODE::ALL;
+    int                            pitch = 0;
+    int                            offset = 0;
+    int                            diameter = 0;
+    int                            drill = 0;
+};
+
+
+bool parseStitchingGroupName( const wxString& aName, STITCHING_GROUP_SETTINGS& aSettings )
+{
+    const wxString& prefix = stitchingGroupPrefix();
+
+    if( !aName.StartsWith( prefix ) )
+        return false;
+
+    wxString remaining = aName.Mid( prefix.length() );
+    wxString fields;
+    int      fieldStart = remaining.Find( wxS( ';' ) );
+
+    if( fieldStart == wxNOT_FOUND )
+    {
+        aSettings.uuid = remaining;
+        return !aSettings.uuid.IsEmpty();
+    }
+
+    aSettings.uuid = remaining.Left( fieldStart );
+    fields = remaining.Mid( fieldStart + 1 );
+
+    while( !fields.IsEmpty() )
+    {
+        wxString field = fields.BeforeFirst( ';' );
+
+        if( field.length() == fields.length() )
+            fields.clear();
+        else
+            fields = fields.Mid( field.length() + 1 );
+
+        wxString key = field.BeforeFirst( '=' );
+        wxString value = field.AfterFirst( '=' );
+
+        if( key == wxS( "m" ) )
+        {
+            if( value == wxS( "g" ) )
+                aSettings.mode = ZONE_VIA_STITCHING_MODE::GRID;
+            else if( value == wxS( "f" ) )
+                aSettings.mode = ZONE_VIA_STITCHING_MODE::FENCE;
+            else
+                aSettings.mode = ZONE_VIA_STITCHING_MODE::NONE;
+
+            aSettings.hasSettings = true;
+        }
+        else if( key == wxS( "e" ) )
+        {
+            if( value == wxS( "o" ) )
+                aSettings.edgeMode = ZONE_VIA_STITCHING_EDGE_MODE::OUTSIDE;
+            else if( value == wxS( "i" ) )
+                aSettings.edgeMode = ZONE_VIA_STITCHING_EDGE_MODE::INSIDE;
+            else
+                aSettings.edgeMode = ZONE_VIA_STITCHING_EDGE_MODE::ALL;
+
+            aSettings.hasSettings = true;
+        }
+        else if( key == wxS( "p" ) )
+        {
+            aSettings.pitch = wxAtoi( value );
+            aSettings.hasSettings = true;
+        }
+        else if( key == wxS( "o" ) )
+        {
+            aSettings.offset = wxAtoi( value );
+            aSettings.hasSettings = true;
+        }
+        else if( key == wxS( "d" ) )
+        {
+            aSettings.diameter = wxAtoi( value );
+            aSettings.hasSettings = true;
+        }
+        else if( key == wxS( "r" ) )
+        {
+            aSettings.drill = wxAtoi( value );
+            aSettings.hasSettings = true;
+        }
+    }
+
+    return !aSettings.uuid.IsEmpty();
+}
+
+
+bool isStitchingViaForZone( const PCB_VIA& aVia, const ZONE& aZone )
+{
+    return isSameZoneStitchingGroup( aVia.GetParentGroup(), aZone );
+}
+
+
+bool isDuplicateCandidatePoint( const std::vector<VECTOR2I>& aPoints, const VECTOR2I& aPoint,
+                                int aMinDistance )
+{
+    int64_t minDistSq = static_cast<int64_t>( aMinDistance ) * aMinDistance;
+
+    for( const VECTOR2I& point : aPoints )
+    {
+        if( ( point - aPoint ).SquaredEuclideanNorm() < minDistSq )
+            return true;
+    }
+
+    return false;
+}
+
+
+bool addCandidatePoint( const VECTOR2I& aPoint, int aDuplicateDistance,
+                        std::vector<VECTOR2I>& aPoints )
+{
+    if( aDuplicateDistance > 0 && isDuplicateCandidatePoint( aPoints, aPoint, aDuplicateDistance ) )
+        return false;
+
+    if( (int) aPoints.size() >= MAX_STITCHING_VIAS )
+        return false;
+
+    aPoints.push_back( aPoint );
+    return true;
+}
+
+
+SHAPE_POLY_SET deflatedViaCenterAllowedArea( const SHAPE_POLY_SET& aPolySet, int aViaRadius,
+                                             int aMaxError )
+{
+    SHAPE_POLY_SET allowed = aPolySet.CloneDropTriangulation();
+
+    if( !allowed.IsEmpty() )
+    {
+        allowed.Simplify();
+        allowed.Deflate( aViaRadius, CORNER_STRATEGY::ROUND_ALL_CORNERS, aMaxError );
+    }
+
+    return allowed;
+}
+
+
+void collectGridStitchingPoints( const ZONE& aZone, std::vector<VECTOR2I>& aPoints )
+{
+    int pitch = aZone.GetViaStitchingPitch();
+
+    if( pitch <= 0 )
+        return;
+
+    int   clearance = aZone.GetViaStitchingDiameter() / 2 + aZone.GetViaStitchingOffset();
+    BOX2I bbox = aZone.Outline()->BBox();
+
+    int left = bbox.GetLeft() + clearance;
+    int right = bbox.GetRight() - clearance;
+    int top = bbox.GetTop() + clearance;
+    int bottom = bbox.GetBottom() - clearance;
+
+    for( int y = top; y <= bottom && (int) aPoints.size() < MAX_STITCHING_VIAS; y += pitch )
+    {
+        for( int x = left; x <= right && (int) aPoints.size() < MAX_STITCHING_VIAS; x += pitch )
+            addCandidatePoint( VECTOR2I( x, y ), 0, aPoints );
+    }
+}
+
+
+bool isNearZoneOuterOutline( const ZONE& aZone, const VECTOR2I& aPoint, int aFenceOffset )
+{
+    const SHAPE_POLY_SET* outline = aZone.Outline();
+
+    if( !outline || outline->IsEmpty() )
+        return false;
+
+    int tolerance = std::max( aZone.GetMaxError() * 2, std::max( 1, aFenceOffset / 4 ) );
+    int minDistance = INT_MAX;
+
+    for( int ii = 0; ii < outline->OutlineCount(); ++ii )
+        minDistance = std::min( minDistance, outline->COutline( ii ).Distance( aPoint, true ) );
+
+    return std::abs( minDistance - aFenceOffset ) <= tolerance;
+}
+
+
+bool fencePointMatchesEdgeMode( const ZONE& aZone, const VECTOR2I& aPoint, int aFenceOffset )
+{
+    ZONE_VIA_STITCHING_EDGE_MODE edgeMode = aZone.GetViaStitchingEdgeMode();
+
+    if( edgeMode == ZONE_VIA_STITCHING_EDGE_MODE::ALL )
+        return true;
+
+    bool nearOuterOutline = isNearZoneOuterOutline( aZone, aPoint, aFenceOffset );
+
+    if( edgeMode == ZONE_VIA_STITCHING_EDGE_MODE::OUTSIDE )
+        return nearOuterOutline;
+
+    return !nearOuterOutline;
+}
+
+
+void collectFencePointsFromChain( const ZONE& aZone, const SHAPE_LINE_CHAIN& aChain,
+                                  const SHAPE_POLY_SET& aAllowedArea, int aFenceOffset,
+                                  std::vector<VECTOR2I>& aPoints )
+{
+    int pitch = aZone.GetViaStitchingPitch();
+
+    if( pitch <= 0 )
+        return;
+
+    int viaRadius = aZone.GetViaStitchingDiameter() / 2;
+    int duplicateDistance = std::max( viaRadius * 2, pitch / 2 );
+    int length = static_cast<int>( aChain.Length() );
+
+    if( length <= 0 )
+        return;
+
+    int count = std::max( 1, static_cast<int>( std::floor( static_cast<double>( length ) / pitch ) ) );
+
+    for( int ii = 0; ii < count && (int) aPoints.size() < MAX_STITCHING_VIAS; ++ii )
+    {
+        int      pathLength = KiROUND( ( ii + 0.5 ) * static_cast<double>( length ) / count );
+        VECTOR2I point = aChain.PointAlong( pathLength % length );
+
+        if( aAllowedArea.Contains( point )
+            && fencePointMatchesEdgeMode( aZone, point, aFenceOffset ) )
+        {
+            addCandidatePoint( point, duplicateDistance, aPoints );
+        }
+    }
+}
+
+
+void collectFencePointsFromPolySet( const ZONE& aZone, const SHAPE_POLY_SET& aPolySet,
+                                    std::vector<VECTOR2I>& aPoints )
+{
+    SHAPE_POLY_SET fenceGeometry = aPolySet.CloneDropTriangulation();
+
+    if( fenceGeometry.IsEmpty() )
+        return;
+
+    fenceGeometry.Simplify();
+
+    int viaRadius = aZone.GetViaStitchingDiameter() / 2;
+    int fenceOffset = viaRadius + aZone.GetViaStitchingOffset();
+    int minFenceContourLength = std::max( aZone.GetViaStitchingPitch() * 2, fenceOffset * 4 );
+
+    SHAPE_POLY_SET allowedArea = fenceGeometry;
+    allowedArea.Deflate( viaRadius, CORNER_STRATEGY::ROUND_ALL_CORNERS, aZone.GetMaxError() );
+
+    SHAPE_POLY_SET fencePath = fenceGeometry;
+    fencePath.Deflate( fenceOffset, CORNER_STRATEGY::ROUND_ALL_CORNERS, aZone.GetMaxError() );
+    fencePath.Simplify();
+
+    if( fencePath.IsEmpty() )
+        return;
+
+    for( int ii = 0; ii < fencePath.OutlineCount()
+              && (int) aPoints.size() < MAX_STITCHING_VIAS; ++ii )
+    {
+        if( fencePath.COutline( ii ).Length() >= minFenceContourLength )
+            collectFencePointsFromChain( aZone, fencePath.COutline( ii ), allowedArea, fenceOffset,
+                                         aPoints );
+
+        for( int jj = 0; jj < fencePath.HoleCount( ii )
+                  && (int) aPoints.size() < MAX_STITCHING_VIAS; ++jj )
+        {
+            if( fencePath.CHole( ii, jj ).Length() >= minFenceContourLength )
+            {
+                collectFencePointsFromChain( aZone, fencePath.CHole( ii, jj ), allowedArea,
+                                             fenceOffset, aPoints );
+            }
+        }
+    }
+}
+
+
+void collectFenceStitchingPoints( BOARD* aBoard, const ZONE& aZone, std::vector<VECTOR2I>& aPoints )
+{
+    bool usedFillGeometry = false;
+    LSET zoneCopperLayers = aZone.GetLayerSet() & LSET::AllCuMask();
+
+    zoneCopperLayers.RunOnLayers(
+            [&]( PCB_LAYER_ID layer )
+            {
+                if( aZone.HasFilledPolysForLayer( layer ) )
+                {
+                    usedFillGeometry = true;
+                    collectFencePointsFromPolySet( aZone, *aZone.GetFilledPolysList( layer ), aPoints );
+                }
+            } );
+
+    if( !usedFillGeometry )
+        collectFencePointsFromPolySet( aZone, *aZone.Outline(), aPoints );
+}
+
+
+void collectViaStitchingPoints( BOARD* aBoard, const ZONE& aZone, std::vector<VECTOR2I>& aPoints )
+{
+    if( aZone.GetViaStitchingMode() == ZONE_VIA_STITCHING_MODE::GRID )
+        collectGridStitchingPoints( aZone, aPoints );
+    else if( aZone.GetViaStitchingMode() == ZONE_VIA_STITCHING_MODE::FENCE )
+        collectFenceStitchingPoints( aBoard, aZone, aPoints );
+}
+
+
+bool isZoneStitchingCandidate( const PCB_VIA& aVia, const ZONE& aZone )
+{
+    PCB_LAYER_ID top;
+    PCB_LAYER_ID bottom;
+
+    aVia.LayerPair( &top, &bottom );
+
+    return aVia.GetIsFree() && aVia.GetViaType() == VIATYPE::THROUGH
+           && aVia.GetNetCode() == aZone.GetNetCode()
+           && aVia.GetWidth( PADSTACK::ALL_LAYERS ) == aZone.GetViaStitchingDiameter()
+           && aVia.GetDrillValue() == aZone.GetViaStitchingDrill()
+           && ( ( top == F_Cu && bottom == B_Cu ) || ( top == B_Cu && bottom == F_Cu ) );
+}
+
+
+class STITCHING_VALIDATOR
+{
+public:
+    STITCHING_VALIDATOR( BOARD* aBoard, const ZONE& aSourceZone, int aViaDiameter,
+                         bool aIgnoreSameNetFreeVias ) :
+            m_board( aBoard ),
+            m_sourceZone( aSourceZone ),
+            m_viaRadius( aViaDiameter / 2 ),
+            m_ignoreSameNetFreeVias( aIgnoreSameNetFreeVias )
+    {
+    }
+
+    bool IsValid( const PCB_VIA& aVia )
+    {
+        return sourceZoneContainsVia( aVia )
+               && connectedSameNetLayerCount( aVia ) >= 2
+               && !collidesWithPadsOrTracks( aVia )
+               && !collidesWithViaKeepout( aVia );
+    }
+
+private:
+    const SHAPE_POLY_SET& viaCenterAllowedArea( const ZONE& aZone, PCB_LAYER_ID aLayer )
+    {
+        std::pair<const ZONE*, PCB_LAYER_ID> key( &aZone, aLayer );
+        auto                                it = m_viaCenterAllowedAreas.find( key );
+
+        if( it != m_viaCenterAllowedAreas.end() )
+            return it->second;
+
+        SHAPE_POLY_SET allowed;
+
+        if( aZone.HasFilledPolysForLayer( aLayer ) )
+        {
+            std::shared_ptr<SHAPE_POLY_SET> fill = aZone.GetFilledPolysList( aLayer );
+
+            if( fill && !fill->IsEmpty() )
+                allowed = deflatedViaCenterAllowedArea( *fill, m_viaRadius, aZone.GetMaxError() );
+        }
+        else
+        {
+            allowed = deflatedViaCenterAllowedArea( *aZone.Outline(), m_viaRadius,
+                                                    aZone.GetMaxError() );
+        }
+
+        return m_viaCenterAllowedAreas.emplace( key, allowed ).first->second;
+    }
+
+    bool zoneLayerContainsVia( const ZONE& aZone, PCB_LAYER_ID aLayer, const PCB_VIA& aVia )
+    {
+        const SHAPE_POLY_SET& allowed = viaCenterAllowedArea( aZone, aLayer );
+        return !allowed.IsEmpty() && allowed.Contains( aVia.GetPosition() );
+    }
+
+    bool sourceZoneContainsVia( const PCB_VIA& aVia )
+    {
+        bool containsVia = false;
+        LSET zoneCopperLayers = m_sourceZone.GetLayerSet() & LSET::AllCuMask();
+
+        zoneCopperLayers.RunOnLayers(
+                [&]( PCB_LAYER_ID layer )
+                {
+                    if( zoneLayerContainsVia( m_sourceZone, layer, aVia ) )
+                        containsVia = true;
+                } );
+
+        return containsVia;
+    }
+
+    int connectedSameNetLayerCount( const PCB_VIA& aVia )
+    {
+        LSET connectedLayers;
+
+        auto testZone =
+                [&]( const ZONE& zone )
+                {
+                    if( zone.GetIsRuleArea() || zone.IsTeardropArea() || !zone.IsOnCopperLayer()
+                        || zone.GetNetCode() != m_sourceZone.GetNetCode() )
+                    {
+                        return;
+                    }
+
+                    LSET zoneCopperLayers = zone.GetLayerSet() & LSET::AllCuMask();
+
+                    zoneCopperLayers.RunOnLayers(
+                            [&]( PCB_LAYER_ID layer )
+                            {
+                                if( zoneLayerContainsVia( zone, layer, aVia ) )
+                                    connectedLayers.set( layer );
+                            } );
+                };
+
+        testZone( m_sourceZone );
+
+        if( m_board )
+        {
+            for( ZONE* zone : m_board->Zones() )
+            {
+                if( zone != &m_sourceZone )
+                    testZone( *zone );
+            }
+        }
+
+        return connectedLayers.count();
+    }
+
+    bool collidesWithPadsOrTracks( const PCB_VIA& aVia )
+    {
+        for( PCB_TRACK* track : m_board->Tracks() )
+        {
+            if( track == &aVia )
+                continue;
+
+            if( PCB_VIA* existingVia = dyn_cast<PCB_VIA*>( track ) )
+            {
+                if( isStitchingViaForZone( *existingVia, m_sourceZone ) )
+                    continue;
+
+                if( m_ignoreSameNetFreeVias && existingVia->GetIsFree()
+                    && existingVia->GetViaType() == VIATYPE::THROUGH
+                    && existingVia->GetNetCode() == m_sourceZone.GetNetCode() )
+                {
+                    continue;
+                }
+            }
+
+            LSET trackCopperLayers = track->GetLayerSet() & LSET::AllCuMask();
+            bool collides = false;
+
+            trackCopperLayers.RunOnLayers(
+                    [&]( PCB_LAYER_ID layer )
+                    {
+                        std::shared_ptr<SHAPE> viaShape =
+                                aVia.GetEffectiveShape( layer, FLASHING::ALWAYS_FLASHED );
+                        std::shared_ptr<SHAPE> trackShape =
+                                track->GetEffectiveShape( layer, FLASHING::ALWAYS_FLASHED );
+
+                        if( viaShape && trackShape && viaShape->Collide( trackShape.get() ) )
+                            collides = true;
+                    } );
+
+            if( collides )
+                return true;
+        }
+
+        for( FOOTPRINT* footprint : m_board->Footprints() )
+        {
+            for( PAD* pad : footprint->Pads() )
+            {
+                LSET padCopperLayers = pad->GetLayerSet() & LSET::AllCuMask();
+                bool collides = false;
+
+                padCopperLayers.RunOnLayers(
+                        [&]( PCB_LAYER_ID layer )
+                        {
+                            std::shared_ptr<SHAPE> viaShape =
+                                    aVia.GetEffectiveShape( layer, FLASHING::ALWAYS_FLASHED );
+                            std::shared_ptr<SHAPE> padShape =
+                                    pad->GetEffectiveShape( layer, FLASHING::ALWAYS_FLASHED );
+
+                            if( viaShape && padShape && viaShape->Collide( padShape.get() ) )
+                                collides = true;
+                        } );
+
+                if( collides )
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    bool collidesWithViaKeepout( const PCB_VIA& aVia )
+    {
+        for( ZONE* zone : m_board->Zones() )
+        {
+            if( !zone->GetIsRuleArea() || !zone->GetDoNotAllowVias()
+                || !( zone->GetLayerSet() & LSET::AllCuMask() ).any() )
+            {
+                continue;
+            }
+
+            LSET keepoutCopperLayers = zone->GetLayerSet() & LSET::AllCuMask();
+            bool collides = false;
+
+            keepoutCopperLayers.RunOnLayers(
+                    [&]( PCB_LAYER_ID layer )
+                    {
+                        std::shared_ptr<SHAPE> viaShape =
+                                aVia.GetEffectiveShape( layer, FLASHING::ALWAYS_FLASHED );
+
+                        if( viaShape && zone->Outline()->Collide( viaShape.get(), 0 ) )
+                            collides = true;
+                    } );
+
+            if( collides )
+                return true;
+        }
+
+        return false;
+    }
+
+private:
+    BOARD*                                             m_board;
+    const ZONE&                                        m_sourceZone;
+    int                                                m_viaRadius;
+    bool                                               m_ignoreSameNetFreeVias;
+    std::map<std::pair<const ZONE*, PCB_LAYER_ID>, SHAPE_POLY_SET>
+            m_viaCenterAllowedAreas;
+};
+
+
+bool hasMatchingViaAtPoint( BOARD* aBoard, const ZONE& aZone, const VECTOR2I& aPoint )
+{
+    for( PCB_TRACK* track : aBoard->Tracks() )
+    {
+        PCB_VIA* via = dyn_cast<PCB_VIA*>( track );
+
+        if( via && via->GetPosition() == aPoint && isZoneStitchingCandidate( *via, aZone ) )
+            return true;
+    }
+
+    return false;
+}
+
+
+void addZoneViaStitching( BOARD_COMMIT& aCommit, BOARD* aBoard, const ZONE& aZone,
+                          bool aSkipExisting, bool aIgnoreSameNetFreeVias )
+{
+    if( !aBoard || aZone.GetIsRuleArea() || aZone.IsTeardropArea() || !aZone.IsOnCopperLayer()
+        || aZone.GetNetCode() <= 0 || aZone.GetViaStitchingMode() == ZONE_VIA_STITCHING_MODE::NONE )
+    {
+        return;
+    }
+
+    std::vector<VECTOR2I> points;
+    collectViaStitchingPoints( aBoard, aZone, points );
+    std::vector<PCB_VIA*> vias;
+    STITCHING_VALIDATOR   validator( aBoard, aZone, aZone.GetViaStitchingDiameter(),
+                                     aIgnoreSameNetFreeVias );
+
+    for( const VECTOR2I& point : points )
+    {
+        if( aSkipExisting && hasMatchingViaAtPoint( aBoard, aZone, point ) )
+            continue;
+
+        PCB_VIA* via = new PCB_VIA( aBoard );
+        via->SetPosition( point );
+        via->SetNetCode( aZone.GetNetCode() );
+        via->SetIsFree( true );
+        via->SetViaType( VIATYPE::THROUGH );
+        via->SetLayerPair( B_Cu, F_Cu );
+        via->SetWidth( PADSTACK::ALL_LAYERS, aZone.GetViaStitchingDiameter() );
+        via->SetDrill( aZone.GetViaStitchingDrill() );
+
+        if( !validator.IsValid( *via ) )
+        {
+            delete via;
+            continue;
+        }
+
+        vias.push_back( via );
+    }
+
+    PCB_GROUP* group = new PCB_GROUP( aBoard );
+    group->SetName( stitchingGroupName( aZone ) );
+
+    for( PCB_VIA* via : vias )
+    {
+        group->AddItem( via );
+        aCommit.Add( via );
+    }
+
+    aCommit.Add( group );
+}
+
+} // namespace
+
+
+void RestoreZoneViaStitchingSettings( BOARD* aBoard )
+{
+    if( !aBoard )
+        return;
+
+    for( PCB_GROUP* group : aBoard->Groups() )
+    {
+        STITCHING_GROUP_SETTINGS settings;
+
+        if( !parseStitchingGroupName( group->GetName(), settings ) )
+            continue;
+
+        for( ZONE* zone : aBoard->Zones() )
+        {
+            if( zone->m_Uuid.AsString() != settings.uuid )
+                continue;
+
+            if( settings.hasSettings )
+            {
+                zone->SetViaStitchingMode( settings.mode );
+                zone->SetViaStitchingEdgeMode( settings.edgeMode );
+
+                if( settings.pitch > 0 )
+                    zone->SetViaStitchingPitch( settings.pitch );
+
+                if( settings.offset >= 0 )
+                    zone->SetViaStitchingOffset( settings.offset );
+
+                if( settings.diameter > 0 )
+                    zone->SetViaStitchingDiameter( settings.diameter );
+
+                if( settings.drill > 0 )
+                    zone->SetViaStitchingDrill( settings.drill );
+            }
+
+            if( zone->GetViaStitchingMode() != ZONE_VIA_STITCHING_MODE::NONE )
+                group->SetName( stitchingGroupName( *zone ) );
+
+            break;
+        }
+    }
+}
+
+
+bool IsZoneViaStitchingVia( const PCB_VIA& aVia )
+{
+    EDA_GROUP* group = aVia.GetParentGroup();
+
+    if( !group )
+        return false;
+
+    STITCHING_GROUP_SETTINGS settings;
+    return parseStitchingGroupName( group->GetName(), settings );
+}
+
+
+ZONE* GetZoneForViaStitchingVia( BOARD* aBoard, const PCB_VIA& aVia )
+{
+    if( !aBoard )
+        return nullptr;
+
+    EDA_GROUP* group = aVia.GetParentGroup();
+
+    if( !group )
+        return nullptr;
+
+    STITCHING_GROUP_SETTINGS settings;
+
+    if( !parseStitchingGroupName( group->GetName(), settings ) )
+        return nullptr;
+
+    for( ZONE* zone : aBoard->Zones() )
+    {
+        if( zone->m_Uuid.AsString() == settings.uuid )
+            return zone;
+    }
+
+    return nullptr;
+}
 
 
 static bool RuleAreasHaveSameProps( const ZONE& a, const ZONE& b )
@@ -178,6 +938,77 @@ std::vector<std::unique_ptr<ZONE>> MergeZonesWithSameOutline( std::vector<std::u
     }
 
     return deduplicatedZones;
+}
+
+
+void AddZoneViaStitching( BOARD_COMMIT& aCommit, BOARD* aBoard, const ZONE& aZone )
+{
+    addZoneViaStitching( aCommit, aBoard, aZone, true, false );
+}
+
+
+void RemoveZoneViaStitching( BOARD_COMMIT& aCommit, BOARD* aBoard, const ZONE& aZone )
+{
+    if( !aBoard || aZone.GetIsRuleArea() || aZone.IsTeardropArea() || !aZone.IsOnCopperLayer()
+        || aZone.GetNetCode() <= 0 )
+    {
+        return;
+    }
+
+    PCB_GROUP* group = findStitchingGroup( aBoard, aZone );
+    std::unordered_set<PCB_VIA*> groupedVias;
+
+    if( group )
+    {
+        for( EDA_ITEM* item : group->GetItems() )
+        {
+            if( PCB_VIA* via = dyn_cast<PCB_VIA*>( item ) )
+                groupedVias.insert( via );
+        }
+
+        for( PCB_VIA* via : groupedVias )
+            aCommit.Remove( via );
+
+        aCommit.Remove( group );
+    }
+
+    if( aZone.GetViaStitchingMode() == ZONE_VIA_STITCHING_MODE::NONE )
+        return;
+
+    std::vector<VECTOR2I> points;
+    collectViaStitchingPoints( aBoard, aZone, points );
+
+    if( points.empty() )
+        return;
+
+    std::vector<PCB_VIA*> viasToRemove;
+
+    for( PCB_TRACK* track : aBoard->Tracks() )
+    {
+        PCB_VIA* via = dyn_cast<PCB_VIA*>( track );
+
+        if( !via || !isZoneStitchingCandidate( *via, aZone ) )
+            continue;
+
+        if( groupedVias.contains( via ) )
+            continue;
+
+        if( std::find( points.begin(), points.end(), via->GetPosition() ) != points.end() )
+            viasToRemove.push_back( via );
+    }
+
+    for( PCB_VIA* via : viasToRemove )
+        aCommit.Remove( via );
+}
+
+
+void RebuildZoneViaStitching( BOARD_COMMIT& aCommit, BOARD* aBoard, const ZONE& aOldZone,
+                              const ZONE& aNewZone )
+{
+    RemoveZoneViaStitching( aCommit, aBoard, aOldZone );
+    addZoneViaStitching( aCommit, aBoard, aNewZone,
+                         aOldZone.GetViaStitchingMode() == ZONE_VIA_STITCHING_MODE::NONE,
+                         aOldZone.GetViaStitchingMode() != ZONE_VIA_STITCHING_MODE::NONE );
 }
 
 

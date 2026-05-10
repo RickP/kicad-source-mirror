@@ -108,6 +108,7 @@ enum DRAG_MODE
     virtual void DisplayPathLine( const SHAPE_LINE_CHAIN& aLine, int aImportance ) = 0;
     virtual void DisplayRatline( const SHAPE_LINE_CHAIN& aRatline, NET_HANDLE aNetCode ) = 0;
     virtual void HideItem( ITEM* aItem ) = 0;
+    virtual void SetRoutingSessionActive( bool aActive ) {}
     virtual void Commit() = 0;
     virtual bool ImportSizes( SIZES_SETTINGS& aSizes, ITEM* aStartItem, NET_HANDLE aNet, VECTOR2D aStartPosition ) = 0;
     virtual int  StackupHeight( int aFirstLayer, int aSecondLayer ) const = 0;

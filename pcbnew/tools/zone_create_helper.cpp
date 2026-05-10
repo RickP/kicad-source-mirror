@@ -34,6 +34,7 @@
 #include <tools/pcb_actions.h>
 #include <tools/pcb_selection_tool.h>
 #include <view/view_controls.h>
+#include <zone_utils.h>
 
 ZONE_CREATE_HELPER::ZONE_CREATE_HELPER( DRAWING_TOOL& aTool, PARAMS& aParams ):
         m_tool( aTool ),
@@ -223,10 +224,12 @@ void ZONE_CREATE_HELPER::commitZone( std::unique_ptr<ZONE> aZone )
         case ZONE_MODE::SIMILAR:
         {
             BOARD_COMMIT commit( &m_tool );
+            BOARD*       board = aZone->GetBoard();
 
             aZone->HatchBorder();
 
             commit.Add( aZone.get() );
+            AddZoneViaStitching( commit, board, *aZone );
             commit.Push( _( "Draw Zone" ) );
 
             m_tool.GetManager()->RunAction<EDA_ITEM*>( ACTIONS::selectItem, aZone.release() );

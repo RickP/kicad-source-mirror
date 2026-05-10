@@ -75,6 +75,12 @@ ZONE::ZONE( BOARD_ITEM_CONTAINER* aParent ) :
         m_hatchOrientation( ANGLE_0 ),
         m_hatchSmoothingLevel( 0 ),
         m_hatchHoleMinArea( 0 ),
+        m_viaStitchingMode( ZONE_VIA_STITCHING_MODE::NONE ),
+        m_viaStitchingEdgeMode( ZONE_VIA_STITCHING_EDGE_MODE::ALL ),
+        m_viaStitchingPitch( 0 ),
+        m_viaStitchingOffset( 0 ),
+        m_viaStitchingDiameter( 0 ),
+        m_viaStitchingDrill( 0 ),
         m_area( 0.0 ),
         m_outlinearea( 0.0 )
 {
@@ -183,6 +189,12 @@ void ZONE::InitDataFromSrcInCopyCtor( const ZONE& aZone, PCB_LAYER_ID aLayer )
     m_hatchSmoothingValue     = aZone.m_hatchSmoothingValue;
     m_hatchBorderAlgorithm    = aZone.m_hatchBorderAlgorithm;
     m_hatchHoleMinArea        = aZone.m_hatchHoleMinArea;
+    m_viaStitchingMode        = aZone.m_viaStitchingMode;
+    m_viaStitchingEdgeMode    = aZone.m_viaStitchingEdgeMode;
+    m_viaStitchingPitch       = aZone.m_viaStitchingPitch;
+    m_viaStitchingOffset      = aZone.m_viaStitchingOffset;
+    m_viaStitchingDiameter    = aZone.m_viaStitchingDiameter;
+    m_viaStitchingDrill       = aZone.m_viaStitchingDrill;
 
     aZone.GetLayerSet().RunOnLayers(
             [&]( PCB_LAYER_ID layer )
@@ -2179,4 +2191,5 @@ static struct ZONE_DESC
 IMPLEMENT_ENUM_TO_WXANY( PLACEMENT_SOURCE_T )
 IMPLEMENT_ENUM_TO_WXANY( ZONE_CONNECTION )
 IMPLEMENT_ENUM_TO_WXANY( ZONE_FILL_MODE )
+IMPLEMENT_ENUM_TO_WXANY( ZONE_VIA_STITCHING_MODE )
 IMPLEMENT_ENUM_TO_WXANY( ISLAND_REMOVAL_MODE )

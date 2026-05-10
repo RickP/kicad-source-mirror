@@ -27,6 +27,8 @@
 #include <vector>
 
 class BOARD;
+class BOARD_COMMIT;
+class PCB_VIA;
 class PROGRESS_REPORTER;
 class ZONE;
 
@@ -53,3 +55,35 @@ std::vector<std::unique_ptr<ZONE>> MergeZonesWithSameOutline( std::vector<std::u
  * @return true if any priorities were changed
  */
 bool AutoAssignZonePriorities( BOARD* aBoard, PROGRESS_REPORTER* aReporter = nullptr );
+
+/**
+ * Add via stitching/fencing vias for a zone using the zone's current settings.
+ */
+void AddZoneViaStitching( BOARD_COMMIT& aCommit, BOARD* aBoard, const ZONE& aZone );
+
+/**
+ * Remove via stitching/fencing vias that match the zone's current settings and generated
+ * positions.
+ */
+void RemoveZoneViaStitching( BOARD_COMMIT& aCommit, BOARD* aBoard, const ZONE& aZone );
+
+/**
+ * Replace generated stitching/fencing vias from an old zone state with vias for a new state.
+ */
+void RebuildZoneViaStitching( BOARD_COMMIT& aCommit, BOARD* aBoard, const ZONE& aOldZone,
+                              const ZONE& aNewZone );
+
+/**
+ * Restore zone via stitching settings stored in generated stitching group names.
+ */
+void RestoreZoneViaStitchingSettings( BOARD* aBoard );
+
+/**
+ * Return true when a via belongs to a generated zone via stitching/fencing group.
+ */
+bool IsZoneViaStitchingVia( const PCB_VIA& aVia );
+
+/**
+ * Return the zone that owns a generated zone via stitching/fencing via, if any.
+ */
+ZONE* GetZoneForViaStitchingVia( BOARD* aBoard, const PCB_VIA& aVia );

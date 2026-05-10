@@ -66,6 +66,7 @@
 #include <trace_helpers.h>
 #include <wildcards_and_files_ext.h>
 #include <zone.h>
+#include <zone_utils.h>
 
 #include <build_version.h>
 #include <filter_reader.h>
@@ -3264,6 +3265,8 @@ BOARD* PCB_IO_KICAD_SEXPR::DoLoad( LINE_READER& aReader, BOARD* aAppendToMe,
     // Report any non-fatal parse warnings to the load info reporter
     for( const wxString& warning : parser.GetParseWarnings() )
         LOAD_INFO_REPORTER::GetInstance().Report( warning, RPT_SEVERITY_WARNING );
+
+    RestoreZoneViaStitchingSettings( board );
 
     return board;
 }

@@ -105,6 +105,23 @@ class PANEL_ZONE_PROPERTIES_BASE : public wxPanel
 		WX_GRID* m_layerSpecificOverrides;
 		STD_BITMAP_BUTTON* m_bpAddCustomLayer;
 		STD_BITMAP_BUTTON* m_bpDeleteCustomLayer;
+		wxPanel* m_viaStitchingPanel;
+		wxStaticText* m_viaStitchingModeLabel;
+		wxChoice* m_viaStitchingModeChoice;
+		wxStaticText* m_viaStitchingEdgesLabel;
+		wxChoice* m_viaStitchingEdgesChoice;
+		wxStaticText* m_viaStitchingPitchLabel;
+		wxTextCtrl* m_viaStitchingPitchCtrl;
+		wxStaticText* m_viaStitchingPitchUnits;
+		wxStaticText* m_viaStitchingOffsetLabel;
+		wxTextCtrl* m_viaStitchingOffsetCtrl;
+		wxStaticText* m_viaStitchingOffsetUnits;
+		wxStaticText* m_viaStitchingDiameterLabel;
+		wxTextCtrl* m_viaStitchingDiameterCtrl;
+		wxStaticText* m_viaStitchingDiameterUnits;
+		wxStaticText* m_viaStitchingDrillLabel;
+		wxTextCtrl* m_viaStitchingDrillCtrl;
+		wxStaticText* m_viaStitchingDrillUnits;
 		wxStaticText* m_cornerSmoothingLabel;
 		wxChoice* m_cornerSmoothingChoice;
 		wxStaticText* m_cornerRadiusLabel;
@@ -119,6 +136,7 @@ class PANEL_ZONE_PROPERTIES_BASE : public wxPanel
 		// Virtual event handlers, override them in your derived class
 		virtual void OnZoneNameChanged( wxCommandEvent& event ) { event.Skip(); }
 		virtual void onHatched( wxCommandEvent& event ) { event.Skip(); }
+		virtual void onViaStitchingMode( wxCommandEvent& event ) { event.Skip(); }
 		virtual void OnAddLayerItem( wxCommandEvent& event ) { event.Skip(); }
 		virtual void OnDeleteLayerItem( wxCommandEvent& event ) { event.Skip(); }
 		virtual void OnCornerSmoothingSelection( wxCommandEvent& event ) { event.Skip(); }
@@ -132,4 +150,3 @@ class PANEL_ZONE_PROPERTIES_BASE : public wxPanel
 		~PANEL_ZONE_PROPERTIES_BASE();
 
 };
-
